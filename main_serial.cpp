@@ -21,39 +21,53 @@ void generate_random_floats(vector <float>& input, int size, float low, float hi
         float random_val = distribution(generator);
        input.push_back(random_val);
     }
+
     return;
 }
 
-// Band-pass filter in the frequency domain
-void applyBandPassFilter(vector<float>& freqData, float deltaF, float sampleRate) {
-    size_t N = freqData.size();
+vector<float> applyBandPassFilter(vector<float>& audioData, float deltaF, float sampleRate) {
+    size_t N = audioData.size();
 
     for (size_t k = 0; k < N; ++k) {
         float freq = (float)k * sampleRate / N;
         float Hf = (freq * freq) / (freq * freq + deltaF * deltaF);
 
-        freqData[k] *= Hf;
+        audioData[k] *= Hf;
     }
+
+    vector<float> filteredData(audioData.size());
+    for (size_t i = 0; i < audioData.size(); ++i) {
+        filteredData[i] = audioData[i];
+    }
+
+    return filteredData;
 }
 
-void applyNotchFilter(vector<float>& freqData, float f0, int n, float sampleRate) {
-    size_t N = freqData.size();
+vector<float> applyNotchFilter(vector<float>& audioData, float f0, int n, float sampleRate) {
+    size_t N = audioData.size();
     for (size_t k = 0; k < N; ++k) {
-        float f = (k < N / 2 ? k : k - N) * sampleRate / N; // Handle negative frequencies
-        float Hf = 1.0f / (pow(f / f0, 2 * n) + 1.0f);     // Notch filter response
-        freqData[k] *= Hf;                                // Apply filter
+        float f = (k < N / 2 ? k : k - N) * sampleRate / N;
+        float Hf = 1.0f / (pow(f / f0, 2 * n) + 1.0f);
+        audioData[k] *= Hf;
     }
+
+    vector<float> filteredData(audioData.size());
+    for (size_t i = 0; i < audioData.size(); ++i) {
+        filteredData[i] = audioData[i];
+    }
+
+    return filteredData;
 }
 
 vector<float> applyFIRFilter(const vector<float>& input, const vector<float>& h) {
-    size_t M = h.size();          // Number of filter coefficients
-    size_t N = input.size();      // Length of input signal
-    std::vector<float> output(N); // Output signal
+    size_t M = h.size();
+    size_t N = input.size();
+    std::vector<float> output(N);
 
     for (size_t n = 0; n < N; ++n) {
         output[n] = 0;
         for (size_t k = 0; k < M; ++k) {
-            if (n >= k) { // Avoid accessing out-of-bounds indices
+            if (n >= k) {
                 output[n] += h[k] * input[n - k];
             }
         }
@@ -62,24 +76,22 @@ vector<float> applyFIRFilter(const vector<float>& input, const vector<float>& h)
 }
 
 vector<float> applyIIRFilter(const vector<float>& input, const vector<float>& a, const vector<float>& b) {
-    size_t M = b.size();          // Number of feedforward coefficients
-    size_t N = a.size();          // Number of feedback coefficients
-    size_t L = input.size();      // Length of input signal
-    std::vector<float> output(L); // Output signal
+    size_t M = b.size();
+    size_t N = a.size();
+    size_t L = input.size();
+    std::vector<float> output(L);
 
     for (size_t n = 0; n < L; ++n) {
         output[n] = 0;
 
-        // Feedforward contribution
         for (size_t k = 0; k < M; ++k) {
-            if (n >= k) { // Avoid accessing out-of-bounds indices
+            if (n >= k) {
                 output[n] += b[k] * input[n - k];
             }
         }
 
-        // Feedback contribution
         for (size_t j = 1; j < N; ++j) {
-            if (n >= j) { // Avoid accessing out-of-bounds indices
+            if (n >= j) {
                 output[n] -= a[j] * output[n - j];
             }
         }
@@ -136,37 +148,63 @@ int main(int argc, char* argv[]) {
     vector<float> audioData, a, b, h;
     memset(&fileInfo, 0, sizeof(fileInfo));
 
-    generate_random_floats(a, 100, -10.0f, 10.0f);
-    generate_random_floats(b, 100, -5.0f, 5.0f);
-    generate_random_floats(h, 100, -10.0f, 10.0f);
+    generate_random_floats(a, 2000, -1.0f, 1.0f);
+    generate_random_floats(b, 2000, -1.0f, 1.0f);
+    generate_random_floats(h, 2000, -1.0f, 1.0f);
 
-    // Step 1: Read the WAV file
     auto start = high_resolution_clock::now();
+
     readWavFile(inputFile, audioData, fileInfo);
-    
-    float deltaF = 30000.0f;
-    float sampleRate = fileInfo.samplerate;
-    float f0 = 50;
-    int n = 2;
-    // applyNotchFilter(audioData, f0, n, sampleRate);
-    // applyBandPassFilter(audioData, deltaF, sampleRate);
-    vector<float> filteredData(audioData.size());
-    // filteredData = applyFIRFilter(audioData, h);
-    filteredData = applyIIRFilter(audioData, a, b);
 
-
-    // for (size_t i = 0; i < audioData.size(); ++i) {
-    //     filteredData[i] = audioData[i];
-    // }
-
-    
-    // Step 5: Write the filtered audio data back to a new file
-    writeWavFile(outputFile, filteredData, fileInfo);
-
-    cout << "Band-Pass Filter applied successfully. Output written to " << outputFile << endl;
     auto end = high_resolution_clock::now();
 
-    auto duration = duration_cast<milliseconds>(end - start);
-    cout << "execution time: " << duration.count() << " ms" << endl;
+    auto read_duration = duration_cast<milliseconds>(end - start);
+
+    vector<float> filteredData_notch(audioData.size());
+    vector<float> filteredData_band(audioData.size());
+    vector<float> filteredData_FIR(audioData.size());
+    vector<float> filteredData_IIR(audioData.size());
+
+    float deltaF = 30000.0f;
+    float sampleRate = fileInfo.samplerate;
+    float f0 = 945;
+    int n = 3;
+
+    start = high_resolution_clock::now();
+
+    filteredData_notch = applyNotchFilter(audioData, f0, n, sampleRate);
+
+    end = high_resolution_clock::now();
+    auto notch_duration = duration_cast<milliseconds>(end - start);
+
+    start = high_resolution_clock::now();
+
+    filteredData_band = applyBandPassFilter(audioData, deltaF, sampleRate);
+
+    end = high_resolution_clock::now();
+    auto band_duration = duration_cast<milliseconds>(end - start);
+
+    start = high_resolution_clock::now();
+
+    filteredData_FIR = applyFIRFilter(audioData, h);
+
+    end = high_resolution_clock::now();
+    auto FIR_duration = duration_cast<milliseconds>(end - start);
+
+    start = high_resolution_clock::now();
+
+    filteredData_IIR = applyIIRFilter(audioData, a, b);
+
+    end = high_resolution_clock::now();
+    auto IIR_duration = duration_cast<milliseconds>(end - start);
+    
+    writeWavFile(outputFile, filteredData_band, fileInfo);
+
+    cout << "Read: " << read_duration.count() << " ms" << endl;
+    cout << "Band-pass Filter: " << band_duration.count() << " ms" << endl;
+    cout << "Notch Filter: " << notch_duration.count() << " ms" << endl;
+    cout << "IRR Filter: " << IIR_duration.count() << " ms" << endl;
+    cout << "FIR Filter: " << FIR_duration.count() << " ms" << endl;
+    cout << "Execution: " << read_duration.count() +  band_duration.count() + notch_duration.count() + IIR_duration.count() + FIR_duration.count()<< " ms" << endl;
     return 0;
 }
