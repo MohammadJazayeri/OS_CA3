@@ -25,7 +25,7 @@ void generate_random_floats(vector <float>& input, int size, float low, float hi
     return;
 }
 
-vector<float> applyBandPassFilter(vector<float>& audioData, float deltaF, float sampleRate) {
+vector<float> applyBandPassFilter(vector<float> audioData, float deltaF, float sampleRate) {
     size_t N = audioData.size();
 
     for (size_t k = 0; k < N; ++k) {
@@ -43,7 +43,7 @@ vector<float> applyBandPassFilter(vector<float>& audioData, float deltaF, float 
     return filteredData;
 }
 
-vector<float> applyNotchFilter(vector<float>& audioData, float f0, int n, float sampleRate) {
+vector<float> applyNotchFilter(vector<float> audioData, float f0, int n, float sampleRate) {
     size_t N = audioData.size();
     for (size_t k = 0; k < N; ++k) {
         float f = (k < N / 2 ? k : k - N) * sampleRate / N;
@@ -59,7 +59,7 @@ vector<float> applyNotchFilter(vector<float>& audioData, float f0, int n, float 
     return filteredData;
 }
 
-vector<float> applyFIRFilter(const vector<float>& input, const vector<float>& h) {
+vector<float> applyFIRFilter(const vector<float> input, const vector<float>& h) {
     size_t M = h.size();
     size_t N = input.size();
     std::vector<float> output(N);
@@ -75,7 +75,7 @@ vector<float> applyFIRFilter(const vector<float>& input, const vector<float>& h)
     return output;
 }
 
-vector<float> applyIIRFilter(const vector<float>& input, const vector<float>& a, const vector<float>& b) {
+vector<float> applyIIRFilter(const vector<float> input, const vector<float>& a, const vector<float>& b) {
     size_t M = b.size();
     size_t N = a.size();
     size_t L = input.size();
@@ -142,7 +142,7 @@ int main(int argc, char* argv[]) {
         printf("Invalid arguments\n");
     }
     string inputFile = argv[1];
-    string outputFile = "filtered_output.wav";
+    string outputFile = "filtered_output_serial.wav";
 
     SF_INFO fileInfo;
     vector<float> audioData, a, b, h;
@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
     vector<float> filteredData_FIR(audioData.size());
     vector<float> filteredData_IIR(audioData.size());
 
-    float deltaF = 30000.0f;
+    float deltaF = 10000.0f;
     float sampleRate = fileInfo.samplerate;
     float f0 = 945;
     int n = 3;
