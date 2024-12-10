@@ -290,7 +290,6 @@ struct FilterChunkArgs {
     vector<float> b; // Coefficients for IIR filter
     vector<float> h; // Coefficients for FIR filter
     float deltaF;
-    float sampleRate;
     float f0;
     int n;
     size_t startIdx; // Start index of chunk
@@ -308,26 +307,26 @@ void generate_random_floats(vector<float>& input, int size, float low, float hig
 }
 
 // Read WAV file
-void readWavFile(const std::string& inputFile, std::vector<float>& data, SF_INFO& fileInfo) {
+void readWavFile(const string& inputFile, vector<float>& data, SF_INFO& fileInfo) {
     SNDFILE* inFile = sf_open(inputFile.c_str(), SFM_READ, &fileInfo);
     if (!inFile) {
-        std::cerr << "Error opening input file: " << sf_strerror(NULL) << std::endl;
+        cerr << "Error opening input file: " << sf_strerror(NULL) << endl;
         exit(1);
     }
 
     data.resize(fileInfo.frames * fileInfo.channels);
     sf_count_t numFrames = sf_readf_float(inFile, data.data(), fileInfo.frames);
     if (numFrames != fileInfo.frames) {
-        std::cerr << "Error reading frames from file." << std::endl;
+        cerr << "Error reading frames from file." << endl;
         sf_close(inFile);
         exit(1);
     }
 
     sf_close(inFile);
-    std::cout << "Successfully read " << numFrames << " frames from " << inputFile << std::endl;
+    cout << "Successfully read " << numFrames << " frames from " << inputFile << endl;
 }
 
-void writeWavFile(const std::string& outputFile, const std::vector<float>& data,  SF_INFO& fileInfo) {
+void writeWavFile(const std::string& outputFile, const std::vector<float>& data,  SF_INFO fileInfo) {
     sf_count_t originalFrames = fileInfo.frames;
     SNDFILE* outFile = sf_open(outputFile.c_str(), SFM_WRITE, &fileInfo);
     if (!outFile) {
@@ -345,29 +344,25 @@ void writeWavFile(const std::string& outputFile, const std::vector<float>& data,
     sf_close(outFile);
     std::cout << "Successfully wrote " << numFrames << " frames to " << outputFile << std::endl;
 }
-// Notch filter function for a chunk
+
 void* applyNotchFilterChunk(void* args) {
     FilterChunkArgs* params = (FilterChunkArgs*)args;
     for (size_t k = params->startIdx; k < params->endIdx; ++k) {
-        float f = (k < params->inputData->size() / 2 ? k : k - params->inputData->size()) * params->sampleRate / params->inputData->size();
-        float Hf = 1.0f / (pow(f / params->f0, 2 * params->n) + 1.0f);
-        (*params->outputData)[k] = (*params->inputData)[k] * Hf;
+        float Hf = 1.0f / (pow((*params->inputData)[k] / params->f0, 2 * params->n) + 1.0f);
+        (*params->outputData)[k] = Hf;
     }
     return nullptr;
 }
 
-// Band-pass filter function for a chunk
 void* applyBandPassFilterChunk(void* args) {
     FilterChunkArgs* params = (FilterChunkArgs*)args;
     for (size_t k = params->startIdx; k < params->endIdx; ++k) {
-        float freq = (float)k * params->sampleRate / params->inputData->size();
-        float Hf = (freq * freq) / (freq * freq + params->deltaF * params->deltaF);
-        (*params->outputData)[k] = (*params->inputData)[k] * Hf;
+        float Hf = ((*params->inputData)[k] * (*params->inputData)[k]) / ((*params->inputData)[k] * (*params->inputData)[k] + params->deltaF * params->deltaF);
+        (*params->outputData)[k] = Hf;
     }
     return nullptr;
 }
 
-// FIR filter function for a chunk
 void* applyFIRFilterChunk(void* args) {
     FilterChunkArgs* params = (FilterChunkArgs*)args;
     size_t M = params->h.size();
@@ -382,7 +377,6 @@ void* applyFIRFilterChunk(void* args) {
     return nullptr;
 }
 
-// IIR filter function for a chunk
 void* applyIIRFilterChunk(void* args) {
     FilterChunkArgs* params = (FilterChunkArgs*)args;
     size_t M = params->b.size();
@@ -403,7 +397,6 @@ void* applyIIRFilterChunk(void* args) {
     return nullptr;
 }
 
-// Function to divide work into chunks
 void divideAndRunFilter(void* (*filterFunction)(void*), vector<float>& inputData, vector<float>& outputData, FilterChunkArgs& baseArgs, int numThreads) {
     pthread_t threads[numThreads];
     FilterChunkArgs args[numThreads];
@@ -429,40 +422,83 @@ int main(int argc, char* argv[]) {
     }
 
     string inputFile = argv[1];
-    string outputFile = "filtered_output_parallel.wav";
+    string outputFile_band = "band_parallel.wav";
+    string outputFile_notch = "notch_parallel.wav";
+    string outputFile_IIR = "IIR_parallel.wav";
+    string outputFile_FIR = "FIR_parallel.wav";
 
     SF_INFO fileInfo;
     vector<float> audioData, a, b, h, outputData_notch, outputData_band, outputData_FIR, outputData_IIR;
     memset(&fileInfo, 0, sizeof(fileInfo));
 
-    generate_random_floats(a, 2000, -1.0f, 1.0f);
-    generate_random_floats(b, 2000, -1.0f, 1.0f);
-    generate_random_floats(h, 2000, -1.0f, 1.0f);
+    generate_random_floats(a, 10000, 0.0f, 4.0f);
+    generate_random_floats(b, 10000, 0.0f, 4.0f);
+    generate_random_floats(h, 10000, 0.0f, 4.0f);
+
+    auto start = high_resolution_clock::now();
 
     readWavFile(inputFile, audioData, fileInfo);
+
+    auto end = high_resolution_clock::now();
+
+    auto read_duration = duration_cast<milliseconds>(end - start);
+
     outputData_notch.resize(audioData.size());
     outputData_band.resize(audioData.size());
     outputData_FIR.resize(audioData.size());
     outputData_IIR.resize(audioData.size());
 
-    FilterChunkArgs notch_args = {&audioData, &outputData_notch, a, b, h, 10000.0f, (float)fileInfo.samplerate, 945, 3};
-    FilterChunkArgs band_args = {&audioData, &outputData_band, a, b, h, 10000.0f, (float)fileInfo.samplerate, 945, 3};
-    FilterChunkArgs FIR_args = {&audioData, &outputData_FIR, a, b, h, 10000.0f, (float)fileInfo.samplerate, 945, 3};
-    FilterChunkArgs IIR_args = {&audioData, &outputData_IIR, a, b, h, 10000.0f, (float)fileInfo.samplerate, 945, 3};
+    float deltaF = 0.0f;
+    float f0 = 0.00001f;
+    int n = 2;
 
-    int numThreads = 4;
+    // Filter arguments setup
+    FilterChunkArgs notch_args = {&audioData, &outputData_notch, a, b, h, deltaF, f0, n};
+    FilterChunkArgs band_args = {&audioData, &outputData_band, a, b, h, deltaF, f0, n};
+    FilterChunkArgs FIR_args = {&audioData, &outputData_FIR, a, b, h, deltaF, f0, n};
+    FilterChunkArgs IIR_args = {&audioData, &outputData_IIR, a, b, h, deltaF, f0, n};
 
-    auto start = high_resolution_clock::now();
+    int numThreads = 5;
+
+    // Measure Notch Filter
+    auto start_notch = high_resolution_clock::now();
     divideAndRunFilter(applyNotchFilterChunk, audioData, outputData_notch, notch_args, numThreads);
+    auto end_notch = high_resolution_clock::now();
+    auto notch_duration = duration_cast<milliseconds>(end_notch - start_notch);
+
+    // Measure Band-Pass Filter
+    auto start_band = high_resolution_clock::now();
     divideAndRunFilter(applyBandPassFilterChunk, audioData, outputData_band, band_args, numThreads);
+    auto end_band = high_resolution_clock::now();
+    auto band_duration = duration_cast<milliseconds>(end_band - start_band);
+
+    // Measure FIR Filter
+    auto start_FIR = high_resolution_clock::now();
     divideAndRunFilter(applyFIRFilterChunk, audioData, outputData_FIR, FIR_args, numThreads);
+    auto end_FIR = high_resolution_clock::now();
+    auto FIR_duration = duration_cast<milliseconds>(end_FIR - start_FIR);
+
+    // Measure IIR Filter
+    auto start_IIR = high_resolution_clock::now();
     divideAndRunFilter(applyIIRFilterChunk, audioData, outputData_IIR, IIR_args, numThreads);
-    auto end = high_resolution_clock::now();
+    auto end_IIR = high_resolution_clock::now();
+    auto IIR_duration = duration_cast<milliseconds>(end_IIR - start_IIR);
 
-    writeWavFile(outputFile, outputData_band, fileInfo);
+    cout << "Read: " << read_duration.count() << " ms" << endl;
+    cout << "Notch Filter Time: " << notch_duration.count() << " ms" << endl;
+    cout << "Band-Pass Filter Time: " << band_duration.count() << " ms" << endl;
+    cout << "FIR Filter Time: " << FIR_duration.count() << " ms" << endl;
+    cout << "IIR Filter Time: " << IIR_duration.count() << " ms" << endl;
 
-    auto duration = duration_cast<milliseconds>(end - start);
-    cout << "All filters applied in parallel with chunking: " << duration.count() << " ms" << endl;
+// Total execution time
 
+
+    writeWavFile(outputFile_band, outputData_band, fileInfo);
+    writeWavFile(outputFile_notch, outputData_notch, fileInfo);
+    writeWavFile(outputFile_FIR, outputData_FIR, fileInfo);
+    writeWavFile(outputFile_IIR, outputData_IIR, fileInfo);
+
+    auto total_duration = notch_duration + band_duration + FIR_duration + IIR_duration;
+    cout << "Total Execution Time: " << total_duration.count() << " ms" << endl;
     return 0;
 }

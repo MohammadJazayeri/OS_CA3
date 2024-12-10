@@ -25,35 +25,24 @@ void generate_random_floats(vector <float>& input, int size, float low, float hi
     return;
 }
 
-vector<float> applyBandPassFilter(vector<float> audioData, float deltaF, float sampleRate) {
+vector<float> applyBandPassFilter(vector<float> audioData, float deltaF) {
     size_t N = audioData.size();
+    vector<float> filteredData(audioData.size());
 
     for (size_t k = 0; k < N; ++k) {
-        float freq = (float)k * sampleRate / N;
-        float Hf = (freq * freq) / (freq * freq + deltaF * deltaF);
-
-        audioData[k] *= Hf;
-    }
-
-    vector<float> filteredData(audioData.size());
-    for (size_t i = 0; i < audioData.size(); ++i) {
-        filteredData[i] = audioData[i];
+        float Hf = (audioData[k] * audioData[k]) / (audioData[k] * audioData[k] + deltaF * deltaF);
+        filteredData[k] = Hf;
     }
 
     return filteredData;
 }
 
-vector<float> applyNotchFilter(vector<float> audioData, float f0, int n, float sampleRate) {
+vector<float> applyNotchFilter(vector<float> audioData, float f0, int n) {
     size_t N = audioData.size();
-    for (size_t k = 0; k < N; ++k) {
-        float f = (k < N / 2 ? k : k - N) * sampleRate / N;
-        float Hf = 1.0f / (pow(f / f0, 2 * n) + 1.0f);
-        audioData[k] *= Hf;
-    }
-
     vector<float> filteredData(audioData.size());
-    for (size_t i = 0; i < audioData.size(); ++i) {
-        filteredData[i] = audioData[i];
+    for (size_t k = 0; k < N; ++k) {
+        float Hf = 1.0f / (pow(audioData[k] / f0, 2 * n) + 1.0f);
+        filteredData[k] = Hf;
     }
 
     return filteredData;
@@ -118,7 +107,7 @@ void readWavFile(const std::string& inputFile, std::vector<float>& data, SF_INFO
     std::cout << "Successfully read " << numFrames << " frames from " << inputFile << std::endl;
 }
 
-void writeWavFile(const std::string& outputFile, const std::vector<float>& data,  SF_INFO& fileInfo) {
+void writeWavFile(const std::string& outputFile, const std::vector<float>& data,  SF_INFO fileInfo) {
     sf_count_t originalFrames = fileInfo.frames;
     SNDFILE* outFile = sf_open(outputFile.c_str(), SFM_WRITE, &fileInfo);
     if (!outFile) {
@@ -142,15 +131,18 @@ int main(int argc, char* argv[]) {
         printf("Invalid arguments\n");
     }
     string inputFile = argv[1];
-    string outputFile = "filtered_output_serial.wav";
+    string outputFile_band = "band_serial.wav";
+    string outputFile_notch = "notch_serial.wav";
+    string outputFile_IIR = "IIR_serial.wav";
+    string outputFile_FIR = "FIR_serial.wav";
 
     SF_INFO fileInfo;
     vector<float> audioData, a, b, h;
     memset(&fileInfo, 0, sizeof(fileInfo));
 
-    generate_random_floats(a, 2000, -1.0f, 1.0f);
-    generate_random_floats(b, 2000, -1.0f, 1.0f);
-    generate_random_floats(h, 2000, -1.0f, 1.0f);
+    generate_random_floats(a, 10000, 0.0f, 4.0f);
+    generate_random_floats(b, 10000, 0.0f, 4.0f);
+    generate_random_floats(h, 10000, 0.0f, 4.0f);
 
     auto start = high_resolution_clock::now();
 
@@ -165,21 +157,20 @@ int main(int argc, char* argv[]) {
     vector<float> filteredData_FIR(audioData.size());
     vector<float> filteredData_IIR(audioData.size());
 
-    float deltaF = 10000.0f;
-    float sampleRate = fileInfo.samplerate;
-    float f0 = 945;
-    int n = 3;
+    float deltaF = 0.1f;
+    float f0 = 0.00001f;
+    int n = 2;
 
     start = high_resolution_clock::now();
 
-    filteredData_notch = applyNotchFilter(audioData, f0, n, sampleRate);
+    filteredData_notch = applyNotchFilter(audioData, f0, n);
 
     end = high_resolution_clock::now();
     auto notch_duration = duration_cast<milliseconds>(end - start);
 
     start = high_resolution_clock::now();
 
-    filteredData_band = applyBandPassFilter(audioData, deltaF, sampleRate);
+    filteredData_band = applyBandPassFilter(audioData, deltaF);
 
     end = high_resolution_clock::now();
     auto band_duration = duration_cast<milliseconds>(end - start);
@@ -198,7 +189,10 @@ int main(int argc, char* argv[]) {
     end = high_resolution_clock::now();
     auto IIR_duration = duration_cast<milliseconds>(end - start);
     
-    writeWavFile(outputFile, filteredData_band, fileInfo);
+    writeWavFile(outputFile_band, filteredData_band, fileInfo);
+    writeWavFile(outputFile_notch, filteredData_notch, fileInfo);
+    writeWavFile(outputFile_FIR, filteredData_FIR, fileInfo);
+    writeWavFile(outputFile_IIR, filteredData_IIR, fileInfo);
 
     cout << "Read: " << read_duration.count() << " ms" << endl;
     cout << "Band-pass Filter: " << band_duration.count() << " ms" << endl;
