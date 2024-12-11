@@ -2,6 +2,9 @@
 #include <cmath>
 #include <pthread.h>
 
+using namespace std;
+
+
 void* apply_notch_filter_chunk(void* args) {
     Filter_chunk_args* params = (Filter_chunk_args*)args;
     for (size_t k = params->start_idx; k < params->end_idx; ++k) {
@@ -34,10 +37,9 @@ void* apply_FIR_filter_chunk(void* args) {
     return nullptr;
 }
 
-void* apply_IIR_filter_chunk(void* args) {
+void* apply_IIR_filter_feedforward_chunk(void* args) {
     Filter_chunk_args* params = (Filter_chunk_args*)args;
     size_t M = params->b.size();
-    size_t N = params->a.size();
     for (size_t n = params->start_idx; n < params->end_idx; ++n) {
         (*params->output_data)[n] = 0;
         for (size_t k = 0; k < M; ++k) {
@@ -45,6 +47,25 @@ void* apply_IIR_filter_chunk(void* args) {
                 (*params->output_data)[n] += params->b[k] * (*params->input_data)[n - k];
             }
         }
+    }
+    return nullptr;
+}
+
+void* apply_IIR_filter_feedback_chunk(void* args) {
+    Filter_chunk_args* params = (Filter_chunk_args*)args;
+    size_t N = params->a.size();
+    size_t overlap = N - 1;
+    size_t start = params->start_idx;
+    size_t end = params->end_idx;
+    for (size_t n = start; n < start + overlap && n < end; ++n) {
+        for (size_t j = 1; j < N; ++j) {
+            if (n >= j) {
+                (*params->output_data)[n] -= params->a[j] * (*params->output_data)[n - j];
+            }
+        }
+    }
+    
+    for (size_t n = start + overlap; n < end; ++n) {
         for (size_t j = 1; j < N; ++j) {
             if (n >= j) {
                 (*params->output_data)[n] -= params->a[j] * (*params->output_data)[n - j];
@@ -70,4 +91,9 @@ void divide_and_run_filter(void* (*filter_function)(void*), vector<float>& input
     for (int i = 0; i < num_threads; ++i) {
         pthread_join(threads[i], nullptr);
     }
+}
+
+void divide_and_run_IIR_filter(vector<float>& input_data, vector<float>& output_data, Filter_chunk_args& baseArgs, int num_threads) {
+    divide_and_run_filter(apply_IIR_filter_feedforward_chunk, input_data, output_data, baseArgs, num_threads);
+    divide_and_run_filter(apply_IIR_filter_feedback_chunk, input_data, output_data, baseArgs, num_threads);
 }

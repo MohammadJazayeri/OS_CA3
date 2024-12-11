@@ -21,8 +21,10 @@ struct Filter_chunk_args {
 void* apply_notch_filter_chunk(void* args);
 void* apply_band_pass_filter_chunk(void* args);
 void* apply_FIR_filter_chunk(void* args);
-void* apply_IIR_filter_chunk(void* args);
 void divide_and_run_filter(void* (*filter_function)(void*),
  vector<float>& input_data, vector<float>& output_data, Filter_chunk_args& baseArgs, int num_threads);
+void* apply_IIR_filter_feedforward_chunk(void* args);
+void divide_and_run_IIR_filter(vector<float>& input_data, vector<float>& output_data, Filter_chunk_args& baseArgs, int num_threads);
+void* apply_IIR_filter_feedback_chunk(void* args);
 
 #endif

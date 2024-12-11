@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
     output_data_FIR.resize(audioData.size());
     output_data_IIR.resize(audioData.size());
 
-    float delta_f = 0.0f;
+    float delta_f = 0.1f;
     float f0 = 0.00001f;
     int n = 2;
 
@@ -73,7 +73,8 @@ int main(int argc, char* argv[]) {
     auto FIR_duration = duration_cast<milliseconds>(end_FIR - start_FIR);
 
     auto start_IIR = high_resolution_clock::now();
-    divide_and_run_filter(apply_IIR_filter_chunk, audioData, output_data_IIR, IIR_args, num_threads);
+    // divide_and_run_filter(apply_IIR_filter_chunk, audioData, output_data_IIR, IIR_args, num_threads);
+    divide_and_run_IIR_filter(audioData, output_data_IIR, IIR_args, num_threads);
     auto end_IIR = high_resolution_clock::now();
     auto IIR_duration = duration_cast<milliseconds>(end_IIR - start_IIR);
 
