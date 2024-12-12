@@ -40,6 +40,7 @@ void* apply_FIR_filter_chunk(void* args) {
 void* apply_IIR_filter_feedforward_chunk(void* args) {
     Filter_chunk_args* params = (Filter_chunk_args*)args;
     size_t M = params->b.size();
+
     for (size_t n = params->start_idx; n < params->end_idx; ++n) {
         (*params->output_data)[n] = 0;
         for (size_t k = 0; k < M; ++k) {
@@ -48,32 +49,21 @@ void* apply_IIR_filter_feedforward_chunk(void* args) {
             }
         }
     }
+
     return nullptr;
 }
 
-void* apply_IIR_filter_feedback_chunk(void* args) {
-    Filter_chunk_args* params = (Filter_chunk_args*)args;
-    size_t N = params->a.size();
-    size_t overlap = N - 1;
-    size_t start = params->start_idx;
-    size_t end = params->end_idx;
-    for (size_t n = start; n < start + overlap && n < end; ++n) {
+void sequential_feedback_IIR(vector<float>& output_data, const vector<float>& a) {
+    size_t N = a.size();
+    for (size_t n = 0; n < output_data.size(); ++n) {
         for (size_t j = 1; j < N; ++j) {
             if (n >= j) {
-                (*params->output_data)[n] -= params->a[j] * (*params->output_data)[n - j];
+                output_data[n] -= a[j] * output_data[n - j];
             }
         }
     }
-    
-    for (size_t n = start + overlap; n < end; ++n) {
-        for (size_t j = 1; j < N; ++j) {
-            if (n >= j) {
-                (*params->output_data)[n] -= params->a[j] * (*params->output_data)[n - j];
-            }
-        }
-    }
-    return nullptr;
 }
+
 
 void divide_and_run_filter(void* (*filter_function)(void*), vector<float>& input_data, vector<float>& output_data, Filter_chunk_args& baseArgs, int num_threads) {
     pthread_t threads[num_threads];
@@ -94,6 +84,8 @@ void divide_and_run_filter(void* (*filter_function)(void*), vector<float>& input
 }
 
 void divide_and_run_IIR_filter(vector<float>& input_data, vector<float>& output_data, Filter_chunk_args& baseArgs, int num_threads) {
+
     divide_and_run_filter(apply_IIR_filter_feedforward_chunk, input_data, output_data, baseArgs, num_threads);
-    divide_and_run_filter(apply_IIR_filter_feedback_chunk, input_data, output_data, baseArgs, num_threads);
+
+    sequential_feedback_IIR(output_data, baseArgs.a);
 }

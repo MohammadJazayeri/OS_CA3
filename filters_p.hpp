@@ -25,6 +25,6 @@ void divide_and_run_filter(void* (*filter_function)(void*),
  vector<float>& input_data, vector<float>& output_data, Filter_chunk_args& baseArgs, int num_threads);
 void* apply_IIR_filter_feedforward_chunk(void* args);
 void divide_and_run_IIR_filter(vector<float>& input_data, vector<float>& output_data, Filter_chunk_args& baseArgs, int num_threads);
-void* apply_IIR_filter_feedback_chunk(void* args);
+void sequential_feedback_IIR(vector<float>& output_data, const vector<float>& a);
 
 #endif
